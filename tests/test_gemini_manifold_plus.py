@@ -978,6 +978,8 @@ async def test_search_suggestions_are_rendered_unmodified_in_an_embed(pipe):
     embed = events[0]['data']['embeds'][0]
     assert html in embed  # Byte for byte.
     assert '<base target="_blank">' in embed and 'iframe:height' in embed
+    # The frame reports the height of the body: the document is never shorter than the frame (150px at first).
+    assert 'document.body.getBoundingClientRect().height' in embed and 'documentElement' not in embed
     # Grounded text is stored for replay (the displayed text gets citation markers).
     assert any(d['delta'].get('reasoning_details') for d in deltas(chunks))
     # The final round's grounding is left for the companion filter's citations.

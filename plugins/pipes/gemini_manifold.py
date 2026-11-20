@@ -6,7 +6,7 @@ author: suurt8ll
 author_url: https://github.com/suurt8ll
 funding_url: https://github.com/suurt8ll/open_webui_functions
 license: MIT
-version: 2.2.0+plus.2
+version: 2.2.0+plus.3
 requirements: google-genai==3.3.0
 """
 
@@ -65,7 +65,7 @@ from pydantic import (
 
 # I change these only when I make a release to avoid PR merge conflicts.
 # If you are making a PR then please do not change these values.
-VERSION = '2.2.0+plus.2'
+VERSION = '2.2.0+plus.3'
 # This is the recommended version for the companion filter.
 # Older versions might still work, but backward compatibility is not guaranteed
 # during the development of this personal use plugin.
@@ -4914,15 +4914,18 @@ def _maps_attribution(grounding_metadata: types.GroundingMetadata | None) -> str
 def _search_suggestions_embed(rendered_content: str) -> str:
     """
     Wraps Google's Search Suggestions (`searchEntryPoint.renderedContent`), unmodified, in a document for
-    Open WebUI's sandboxed embed frame: links open in a new tab (no interstitials), and the frame reports its
-    height so that it fits the chips (aistudio.google.com/docs/terms#grounding-with-google-search).
+    Open WebUI's sandboxed embed frame: links open in a new tab (no interstitials), and the frame reports the
+    height of the chips so that it fits them (aistudio.google.com/docs/terms#grounding-with-google-search).
+    The body is measured, not the document: inside a frame the document is never shorter than the frame
+    (150px until it is resized), so the frame could never shrink. The 1px padding keeps the outline visible.
     """
     return (
         '<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank">'
-        '<style>html,body{margin:0;padding:0;background:transparent}</style></head><body>'
+        '<style>html,body{margin:0;background:transparent}body{padding:1px;display:flow-root}</style>'
+        '</head><body>'
         f'{rendered_content}'
         '<script>(()=>{const post=()=>parent.postMessage({type:"iframe:height",'
-        'height:document.documentElement.scrollHeight},"*");'
+        'height:Math.ceil(document.body.getBoundingClientRect().height)},"*");'
         'addEventListener("load",post);new ResizeObserver(post).observe(document.body);})();</script>'
         '</body></html>'
     )
