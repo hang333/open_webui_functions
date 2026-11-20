@@ -20,8 +20,8 @@ One chat toggle for the thinking level, with one level at a time. Open WebUI's o
 ## Using it from the chat input
 
 1. Turn on **Settings → Interface → Show Input Selections**. The active toggle then shows as a badge in the chat input.
-2. Click the badge to open the level picker (Open WebUI opens a filter's user valves when its badge is clicked). Hover the badge and click its x to turn the toggle off for the chat; the model then uses its own default.
-3. To have thinking on in every new chat, make the filter a **default filter** of the models (model editor → Filters → Default Filters).
+2. Click the badge to open the level picker (Open WebUI opens a filter's user valves when its badge is clicked). Until a level has been saved once, the picker shows **Default**: click it to switch to **Custom** and the level dropdown appears. Hover the badge and click its x to turn the toggle off for the chat; the model then uses its own default.
+3. To have thinking on in every new chat, open the model editor → **Filters** and turn on **Start enabled in new chats** under this filter (saved as `defaultFilterIds` in the model's meta).
 
 ## Installation
 
