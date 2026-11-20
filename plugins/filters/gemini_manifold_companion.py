@@ -1,12 +1,12 @@
 """
 title: Gemini Manifold Companion
 id: gemini_manifold_companion
-description: A companion filter for "Gemini Manifold google_genai" pipe providing enhanced functionality.
+description: Companion filter for the "Gemini Manifold google_genai" and "Gemini Manifold Plus" pipes.
 author: suurt8ll
 author_url: https://github.com/suurt8ll
 funding_url: https://github.com/suurt8ll/open_webui_functions
 license: MIT
-version: 2.1.0
+version: 2.2.0
 """
 
 import asyncio
@@ -25,11 +25,15 @@ from fastapi.datastructures import State
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
-VERSION = '2.1.0'
+VERSION = '2.2.0'
 
 # This filter can detect that a feature like web search or code execution is enabled in the front-end,
 # set the feature back to False so Open WebUI does not run it's own logic and then
 # pass custom values to "Gemini Manifold google_genai" that signal which feature was enabled and intercepted.
+
+# Function ids of the manifold pipes this filter serves. A pipe installed under another id is recognized too
+# when it exposes its model table as `gemini_model_config` (see `Filter._owning_pipe_model_config`).
+MANIFOLD_PIPE_IDS: Final[frozenset[str]] = frozenset({'gemini_manifold_google_genai', 'gemini_manifold_plus'})
 
 # FIXME: Add `from __future__ import annotations` at the top of this file (repo
 # convention, see AGENTS.md). Until then the file relies on string annotations.
@@ -394,10 +398,12 @@ class Filter:
         """Modifies the incoming request payload before it's sent to the LLM. Operates on the `form_data` dictionary."""
         log.debug(f'inlet method has been called. Gemini Manifold Companion version is {VERSION}')
 
-        canonical_model_name, is_manifold = self._get_model_name(body)
+        pipe_id, canonical_model_name = self._get_model_name(body)
+        app_state: State = __request__.app.state
+        pipe_model_config = self._owning_pipe_model_config(app_state, pipe_id)
 
         # Exit early if this is not a model that the companion is intended to be tied to.
-        if not is_manifold:
+        if pipe_id not in MANIFOLD_PIPE_IDS and pipe_model_config is None:
             log.debug('Returning the original body object because the request is not for a Gemini Manifold pipe model.')
             return body
 
@@ -405,8 +411,6 @@ class Filter:
         # parameters that Open WebUI has already merged into the request body.
         user_valves = __user__.get('valves') if isinstance(__user__, dict) else None
         valves = _resolve_options(self.valves, user_valves, body)
-
-        app_state: State = __request__.app.state
 
         # Perform housekeeping before creating new state objects.
         # This ensures that even if a pipe/filter pair crashes or hangs,
@@ -427,11 +431,15 @@ class Filter:
         )
         app_state._state['gemini_dummy_event_emitter'] = EventEmitter(None)
 
-        # Load and store model configuration in app state
-        log.debug('Loading model configuration...')
-        model_config = self._load_model_config(valves.MODEL_CONFIG_PATH)
-        app_state._state['gemini_model_config'] = model_config
-        log.debug(f'Stored model config in app state with {len(model_config)} model(s).')
+        if pipe_model_config is not None:
+            # The pipe embeds its own model table (Gemini Manifold Plus): use the same data it does.
+            model_config = pipe_model_config
+        else:
+            # Load and store model configuration in app state
+            log.debug('Loading model configuration...')
+            model_config = self._load_model_config(valves.MODEL_CONFIG_PATH)
+            app_state._state['gemini_model_config'] = model_config
+            log.debug(f'Stored model config in app state with {len(model_config)} model(s).')
 
         # Check if the model supports grounding or code execution using YAML config
         is_grounding_model = self._check_model_capability(canonical_model_name, model_config, 'search_grounding')
@@ -475,7 +483,7 @@ class Filter:
                 features['google_code_execution'] = True
         if valves.USE_PERMISSIVE_SAFETY:
             log.info('Adding permissive safety settings to `__metadata__`.')
-            __metadata__['safety_settings'] = self._get_permissive_safety_settings(canonical_model_name)
+            __metadata__['safety_settings'] = self._get_permissive_safety_settings()
         if valves.BYPASS_BACKEND_RAG:
             chat_id = __metadata__.get('chat_id')
             chat_id_str = chat_id if isinstance(chat_id, str) else ''
@@ -582,8 +590,24 @@ class Filter:
             log.info('Found grounding metadata, processing citations.')
             log.trace('Stored grounding metadata:', payload=stored_metadata)
 
-            current_content = body['messages'][-1]['content']
-            if isinstance(current_content, list):
+            target_msg = body['messages'][-1]
+            output = target_msg.get('output')
+            # Message output items (used by UI for reasoning/structured models), one per round of a tool loop.
+            message_items = (
+                [item for item in output if isinstance(item, dict) and item.get('type') == 'message']
+                if isinstance(output, list)
+                else []
+            )
+            # The grounding belongs to the last round, so only the text of the last message item gets markers.
+            text_parts = [
+                part
+                for part in (message_items[-1].get('content') or [] if message_items else [])
+                if isinstance(part, dict) and part.get('type') in ('output_text', 'text')
+            ]
+            current_content = target_msg['content']
+            if text_parts:
+                text_to_use = ''.join(str(part.get('text') or '') for part in text_parts)
+            elif isinstance(current_content, list):
                 text_to_use = ''
                 for item in current_content:
                     if item.get('type') == 'text':
@@ -599,29 +623,26 @@ class Filter:
                 text_to_use,
             )
 
-            if cited_text:
-                target_msg = body['messages'][-1]
-                content = target_msg.get('content')
-
-                # 1. Update message content
-                if isinstance(content, list):
-                    for item in content:
+            if cited_text and text_parts:
+                text_parts[0]['text'] = cited_text
+                for part in text_parts[1:]:
+                    part['text'] = ''
+                # Open WebUI derives the message content from the output items like this.
+                item_texts = (
+                    ''.join(str(part.get('text') or '') for part in item.get('content') or [] if isinstance(part, dict))
+                    for item in message_items
+                )
+                target_msg['content'] = '\n'.join(text for text in item_texts if text.strip())
+            elif cited_text:
+                # Update message content
+                if isinstance(current_content, list):
+                    for item in current_content:
                         if item.get('type') == 'text':
                             item = cast('TextContent', item)
                             item['text'] = cited_text
                             break
                 else:
                     target_msg['content'] = cited_text
-
-                # 2. Update message output array if present (used by UI for reasoning/structured models)
-                if 'output' in target_msg and isinstance(target_msg['output'], list):
-                    for out_item in target_msg['output']:
-                        if isinstance(out_item, dict) and out_item.get('type') == 'message':
-                            out_content = out_item.get('content')
-                            if isinstance(out_content, list):
-                                for sub_item in out_content:
-                                    if isinstance(sub_item, dict) and sub_item.get('type') in ('output_text', 'text'):
-                                        sub_item['text'] = cited_text
 
             # Emit status event with search queries before resolving URLs
             if stored_metadata.web_search_queries:
@@ -799,6 +820,9 @@ class Filter:
                 uri = web_info.uri
             elif (maps_info := g_c.maps) and maps_info.uri:
                 uri = maps_info.uri
+            elif (image_info := getattr(g_c, 'image', None)) and image_info.source_uri:
+                # Image Search results must link to the page that contains the image, not to the image file.
+                uri = image_info.source_uri
 
             if uri:
                 initial_metadatas.append((i, uri))
@@ -924,38 +948,18 @@ class Filter:
 
     # region 1.3 Get permissive safety settings
 
-    def _get_permissive_safety_settings(self, model_name: str) -> list[types.SafetySetting]:
-        """Get safety settings based on model name and permissive setting."""
-
-        # Settings supported by most models
+    def _get_permissive_safety_settings(self) -> list[types.SafetySetting]:
+        """
+        Safety settings with every filter off. These are the four documented categories
+        (aistudio.google.com/docs/safety-settings); `OFF` is also the default of Gemini 2.5 and later.
+        The Gemini 1.x/2.0 models that needed `BLOCK_NONE` or civic integrity settings are shut down.
+        """
         category_threshold_map = {
             types.HarmCategory.HARM_CATEGORY_HARASSMENT: types.HarmBlockThreshold.OFF,
             types.HarmCategory.HARM_CATEGORY_HATE_SPEECH: types.HarmBlockThreshold.OFF,
             types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: types.HarmBlockThreshold.OFF,
             types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: types.HarmBlockThreshold.OFF,
-            types.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY: types.HarmBlockThreshold.BLOCK_NONE,
         }
-
-        # Older models use BLOCK_NONE
-        if model_name in [
-            'gemini-1.5-pro-001',
-            'gemini-1.5-flash-001',
-            'gemini-1.5-flash-8b-exp-0827',
-            'gemini-1.5-flash-8b-exp-0924',
-            'gemini-pro',
-            'gemini-1.0-pro',
-            'gemini-1.0-pro-001',
-        ]:
-            for category in category_threshold_map:
-                category_threshold_map[category] = types.HarmBlockThreshold.BLOCK_NONE
-
-        # Gemini 2.0 Flash supports CIVIC_INTEGRITY OFF
-        if model_name in [
-            'gemini-2.0-flash',
-            'gemini-2.0-flash-001',
-            'gemini-2.0-flash-exp',
-        ]:
-            category_threshold_map[types.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY] = types.HarmBlockThreshold.OFF
 
         log.debug(f'Safety settings: {str({k.value: v.value for k, v in category_threshold_map.items()})}')
 
@@ -1112,21 +1116,21 @@ class Filter:
         return candidates[0]
 
     @staticmethod
-    def _get_model_name(body: 'Body') -> tuple[str, bool]:
+    def _get_model_name(body: 'Body') -> tuple[str, str]:
         """
-        Extracts the effective and canonical model name from the request body.
+        Extracts the pipe id and the canonical model name from the request body.
 
         Handles standard model names and custom workspace models by prioritizing
-        the base_model_id found in metadata.
+        the base_model_id found in metadata. Manifold model ids are `<function id>.<model id>`;
+        function ids never contain a dash, while Gemini model ids always do.
 
         Args:
             body: The request body dictionary.
 
         Returns:
             A tuple containing:
+            - The function id of the pipe serving the model ('' if the id has no such prefix).
             - The canonical model name (prefix removed).
-            - A boolean indicating if the effective model name contained the
-              'gemini_manifold_google_genai.' prefix.
         """
         # 1. Get the initially requested model name from the top level
         effective_model_name: str = body.get('model', '')
@@ -1142,24 +1146,31 @@ class Filter:
             if base_model_name:
                 effective_model_name = base_model_name
 
-        # 3. Determine if the effective model name contains the manifold prefix.
-        # This flag indicates if the model (after considering base_model_id)
-        # appears to be one defined or routed via the manifold pipe function.
-        is_manifold_model = 'gemini_manifold_google_genai.' in effective_model_name
+        # 3. Split the pipe's function id off the effective model name.
+        prefix, dot, rest = effective_model_name.partition('.')
+        pipe_id, canonical_model_name = (prefix, rest) if dot and '-' not in prefix else ('', effective_model_name)
 
-        # 4. Create the canonical model name by removing the manifold prefix
-        # from the effective model name.
-        canonical_model_name = effective_model_name.replace('gemini_manifold_google_genai.', '')
-
-        # 5. Log the relevant names for debugging purposes
+        # 4. Log the relevant names for debugging purposes
         log.debug(
             f"Model Name Extraction: initial='{initial_model_name}', "
             f"base='{base_model_name}', effective='{effective_model_name}', "
-            f"canonical='{canonical_model_name}', is_manifold={is_manifold_model}"
+            f"canonical='{canonical_model_name}', pipe_id='{pipe_id}'"
         )
 
-        # 6. Return the canonical name and the manifold flag
-        return canonical_model_name, is_manifold_model
+        # 5. Return the pipe id and the canonical name
+        return pipe_id, canonical_model_name
+
+    @staticmethod
+    def _owning_pipe_model_config(app_state: State, pipe_id: str) -> dict | None:
+        """
+        The model table of the pipe that serves the model, if the loaded pipe exposes one as
+        `gemini_model_config` (Gemini Manifold Plus embeds its table). Open WebUI keeps loaded
+        function instances in `app.state.FUNCTIONS`.
+        """
+        functions = getattr(app_state, 'FUNCTIONS', None)
+        pipe = functions.get(pipe_id) if pipe_id and isinstance(functions, dict) else None
+        config = getattr(pipe, 'gemini_model_config', None)
+        return config if isinstance(config, dict) else None
 
     # endregion 1.4 Utility helpers
 

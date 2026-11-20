@@ -1,9 +1,18 @@
 # Gemini Model Definitions
-# Source for capabilities: https://ai.google.dev/gemini-api/docs/models
-# Source for aspect ratios: https://ai.google.dev/gemini-api/docs/image-generation#aspect_ratios_and_image_size
-# Source for pricing: https://ai.google.dev/gemini-api/docs/pricing
+# Source for capabilities: https://aistudio.google.com/docs/models
+# Source for thinking levels: https://aistudio.google.com/docs/thinking#levels-budgets
+# Source for aspect ratios: https://aistudio.google.com/docs/image-generation#aspect_ratios_and_image_size
+# Source for pricing: https://aistudio.google.com/docs/pricing
 # Prices are per 1 million tokens in USD.
-
+#
+# Keys read by the pipe besides `capabilities`, `image_generation` and `pricing`:
+#   thinking.levels / thinking.default: accepted `thinking_level` values (lowest to highest) and the API default.
+#   thinking.budget / thinking.can_disable: accepted `thinking_budget` range of budget-only (Gemini 2.5) models,
+#     and whether a budget of 0 turns thinking off.
+#   image_generation.max_reference_images: hard limit on input images per request (omitted when undocumented).
+#   image_generation.image_search: the model accepts Image Search grounding (`google_search.search_types`).
+# Gemini Manifold Plus embeds a verbatim copy of this file (`_MODEL_TABLE_YAML`); keep both in sync
+# (tests/test_gemini_manifold_plus.py checks it).
 
 
 gemini-4-hydrogen:
@@ -31,9 +40,11 @@ gemini-4-hydrogen:
     live_api: false
     search_grounding: true
     structured_outputs: true
-    # Supported thinking levels: LOW, MEDIUM, HIGH, XHIGH.
     thinking: true
     url_context: true
+  thinking:
+    levels: [low, medium, high, xhigh]
+    default: high
   pricing:
     free_tier: true
     excluded_features: [search_grounding, grounding_google_maps]
@@ -46,6 +57,48 @@ gemini-4-hydrogen:
     caching:
       - up_to_tokens: null
         price_per_million: 0.075
+
+gemini-4-neon:
+  description: "Brings frontier-level intelligence with fast end-to-end task completion across complex software engineering, knowledge work, and science workflows, featuring a unified 1M-token context window and long decode up to 1M tokens."
+  # knowledge_cutoff: not published by Google.
+  latest_update: "2026-11"
+  supported_data_types:
+    inputs: [Text, Image, Video, Audio, PDF]
+    outputs: [Text]
+  tokens:
+    # Context window is a unified input + output limit.
+    input: 1048576
+    # Default synchronous limit. Up to 1048576 with long decode (not used by this pipe).
+    output: 65536
+  capabilities:
+    audio_generation: false
+    batch_api: true
+    # Implicit caching only. Explicit caching (cachedContents) is not supported.
+    caching: true
+    code_execution: true
+    file_search: true
+    function_calling: true
+    grounding_google_maps: true
+    image_generation: false
+    live_api: false
+    search_grounding: true
+    structured_outputs: true
+    thinking: true
+    url_context: true
+  thinking:
+    levels: [low, medium, high, xhigh]
+    default: high
+  pricing:
+    # Not available on the Free tier. Flat pricing across the full 1M context window.
+    input:
+      - up_to_tokens: null
+        price_per_million: 3.00
+    output:
+      - up_to_tokens: null
+        price_per_million: 15.00
+    caching:
+      - up_to_tokens: null
+        price_per_million: 0.15
 
 gemini-4-carbon:
   description: "Our most capable reasoning model, built for complex software engineering, mathematical and scientific problem solving, high factual accuracy, autonomous multi-step agents, and long decode up to 1M tokens."
@@ -72,9 +125,11 @@ gemini-4-carbon:
     live_api: false
     search_grounding: true
     structured_outputs: true
-    # Supported thinking levels: LOW, MEDIUM, HIGH.
     thinking: true
     url_context: true
+  thinking:
+    levels: [low, medium, high]
+    default: medium
   pricing:
     # Not available on the Free tier.
     # Introductory pricing through 2026-11-30; standard pricing from 2026-12-01 is input 4.00, output 20.00, caching 0.20.
@@ -115,6 +170,9 @@ gemini-4-argon:
     structured_outputs: true
     thinking: true
     url_context: true
+  thinking:
+    levels: [low, medium, high]
+    default: medium
   pricing:
     # Not available on the Free tier.
     # Introductory pricing through 2026-11-30; standard pricing from 2026-12-01 is input 4.00, output 20.00, caching 0.20.
@@ -152,9 +210,14 @@ gemini-nano-banana-2.1:
     structured_outputs: false
     thinking: true
     url_context: false
+  thinking:
+    levels: [minimal, medium, high]
+    default: medium
   image_generation:
     resolutions: ["1K", "2K", "4K"]
     aspect_ratios: ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"]
+    max_reference_images: 14
+    image_search: true
   pricing:
     input:
       - up_to_tokens: null
@@ -190,6 +253,9 @@ gemini-3.8-flash:
     structured_outputs: true
     thinking: true
     url_context: true
+  thinking:
+    levels: [low, medium, high]
+    default: medium
   pricing:
     free_tier: true
     excluded_features: [search_grounding, grounding_google_maps]
@@ -220,7 +286,7 @@ gemini-3.1-flash-lite-image:
     caching: false
     code_execution: false
     file_search: false
-    function_calling: true
+    function_calling: false
     grounding_google_maps: false
     image_generation: true
     live_api: false
@@ -228,9 +294,13 @@ gemini-3.1-flash-lite-image:
     structured_outputs: false
     thinking: true
     url_context: false
+  thinking:
+    levels: [minimal, high]
+    default: minimal
   image_generation:
-    resolutions: ["1K"]
-    aspect_ratios: ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"]
+    # Output is fixed at 1K; `image_size` is not configurable.
+    resolutions: []
+    aspect_ratios: ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]
   pricing:
     input:
       - up_to_tokens: null
@@ -243,6 +313,7 @@ gemini-3.1-flash-lite-image:
         price_per_million: 30.00
 
 gemini-3.7-flash:
+  # Deprecated on 2026-10-08; requests are routed to gemini-3.8-flash.
   description: "Gemini 3.7 Flash is the next iteration in the Gemini 3 series of highly-capable, natively multimodal, reasoning models."
   knowledge_cutoff: "2026-03"
   latest_update: "2026-08"
@@ -266,6 +337,9 @@ gemini-3.7-flash:
     structured_outputs: true
     thinking: true
     url_context: true
+  thinking:
+    levels: [low, medium, high]
+    default: medium
   pricing:
     free_tier: true
     excluded_features: [search_grounding, grounding_google_maps]
@@ -304,18 +378,22 @@ gemini-3.6-flash:
     structured_outputs: true
     thinking: true
     url_context: true
+  thinking:
+    levels: [minimal, low, medium, high]
+    default: medium
   pricing:
     free_tier: true
     excluded_features: [search_grounding, grounding_google_maps]
+    # Introductory pricing through 2026-12-31; standard pricing from 2027-01-01 is input 1.50, output 7.50, caching 0.15.
     input:
       - up_to_tokens: null
-        price_per_million: 1.50
+        price_per_million: 0.75
     output:
       - up_to_tokens: null
-        price_per_million: 7.50
+        price_per_million: 3.75
     caching:
       - up_to_tokens: null
-        price_per_million: 0.15
+        price_per_million: 0.075
 
 gemini-3.5-flash-lite:
   description: "A high-efficiency, low-latency model with upgraded agentic capabilities, optimized for cost-effective, high-throughput workloads."
@@ -334,16 +412,19 @@ gemini-3.5-flash-lite:
     code_execution: true
     file_search: true
     function_calling: true
-    grounding_google_maps: false
+    grounding_google_maps: true
     image_generation: false
     live_api: false
     search_grounding: true
     structured_outputs: true
     thinking: true
     url_context: true
+  thinking:
+    levels: [minimal, low, medium, high]
+    default: minimal
   pricing:
     free_tier: true
-    excluded_features: [search_grounding]
+    excluded_features: [search_grounding, grounding_google_maps]
     input:
       - up_to_tokens: null
         price_per_million: 0.30
@@ -355,6 +436,7 @@ gemini-3.5-flash-lite:
         price_per_million: 0.03
 
 gemini-3.5-flash:
+  # Deprecated on 2026-10-08; requests are routed to gemini-3.6-flash.
   description: "Gemini 3.5 Flash provides sustained frontier-level intelligence optimized for real-world tasks at a higher speed and lower cost. Designed for the agentic era, it excels at sub-agent deployment, multi-step workflows, and long-horizon tasks at scale. This model is particularly effective for rapid agentic loops involving complex coding cycles and iterations."
   knowledge_cutoff: "2025-01"
   latest_update: "2026-05"
@@ -378,6 +460,9 @@ gemini-3.5-flash:
     structured_outputs: true
     thinking: true
     url_context: true
+  thinking:
+    levels: [minimal, low, medium, high]
+    default: medium
   pricing:
     free_tier: true
     excluded_features: [search_grounding, grounding_google_maps]
@@ -408,53 +493,19 @@ gemini-3.1-flash-lite:
     code_execution: true
     file_search: true
     function_calling: true
-    grounding_google_maps: false
+    grounding_google_maps: true
     image_generation: false
     live_api: false
     search_grounding: true
     structured_outputs: true
     thinking: true
     url_context: true
+  thinking:
+    levels: [minimal, low, medium, high]
+    default: minimal
   pricing:
     free_tier: true
-    excluded_features: [search_grounding]
-    input:
-      - up_to_tokens: null
-        price_per_million: 0.25
-    output:
-      - up_to_tokens: null
-        price_per_million: 1.50
-    caching:
-      - up_to_tokens: null
-        price_per_million: 0.025
-
-gemini-3.1-flash-lite-preview:
-  description: "Our most cost-efficient multimodal model, offering the fastest performance for high-frequency, lightweight tasks. Gemini 3.1 Flash-Lite is best for high-volume agentic tasks, simple data extraction, and extremely low-latency applications where budget and speed are the primary constraints."
-  knowledge_cutoff: "2025-01"
-  latest_update: "2026-03"
-  supported_data_types:
-    inputs: [Text, Image, Video, Audio, PDF]
-    outputs: [Text]
-  tokens:
-    input: 1048576
-    output: 65536
-  capabilities:
-    audio_generation: false
-    batch_api: true
-    caching: true
-    code_execution: true
-    file_search: true
-    function_calling: true
-    grounding_google_maps: false
-    image_generation: false
-    live_api: false
-    search_grounding: true
-    structured_outputs: true
-    thinking: true
-    url_context: true
-  pricing:
-    free_tier: true
-    excluded_features: [search_grounding]
+    excluded_features: [search_grounding, grounding_google_maps]
     input:
       - up_to_tokens: null
         price_per_million: 0.25
@@ -466,6 +517,7 @@ gemini-3.1-flash-lite-preview:
         price_per_million: 0.025
 
 gemini-3.1-flash-image:
+  # Deprecated on 2026-10-06 (no shutdown date); replacement: gemini-nano-banana-2.1.
   description: "Pro-level visual intelligence with Flash-speed efficiency and reality-grounded generation capabilities."
   knowledge_cutoff: "2025-01"
   latest_update: "2026-02"
@@ -489,9 +541,14 @@ gemini-3.1-flash-image:
     structured_outputs: false
     thinking: true
     url_context: false
+  thinking:
+    levels: [minimal, high]
+    default: minimal
   image_generation:
-    resolutions: ["512PX", "1K", "2K", "4K"]
+    resolutions: ["512", "1K", "2K", "4K"]
     aspect_ratios: ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"]
+    max_reference_images: 14
+    image_search: true
   pricing:
     input:
       - up_to_tokens: null
@@ -520,16 +577,19 @@ gemini-3-flash-preview:
     code_execution: true
     file_search: true
     function_calling: true
-    grounding_google_maps: false
+    grounding_google_maps: true
     image_generation: false
     live_api: false
     search_grounding: true
     structured_outputs: true
     thinking: true
     url_context: true
+  thinking:
+    levels: [minimal, low, medium, high]
+    default: high
   pricing:
     free_tier: true
-    excluded_features: [search_grounding]
+    excluded_features: [search_grounding, grounding_google_maps]
     input:
       - up_to_tokens: null
         price_per_million: 0.5
@@ -539,47 +599,6 @@ gemini-3-flash-preview:
     caching:
       - up_to_tokens: null
         price_per_million: 0.05
-
-gemini-3-pro-preview:
-  description: "The best model in the world for multimodal understanding, and our most powerful agentic and vibe-coding model yet."
-  knowledge_cutoff: "2025-01"
-  latest_update: "2025-11"
-  supported_data_types:
-    inputs: [Text, Image, Video, Audio, PDF]
-    outputs: [Text]
-  tokens:
-    input: 1048576
-    output: 65536
-  capabilities:
-    audio_generation: false
-    batch_api: true
-    caching: true
-    code_execution: true
-    file_search: true
-    function_calling: true
-    grounding_google_maps: false
-    image_generation: false
-    live_api: false
-    search_grounding: true
-    structured_outputs: true
-    thinking: true
-    url_context: true
-  pricing:
-    input:
-      - up_to_tokens: 200000
-        price_per_million: 2.00
-      - up_to_tokens: null
-        price_per_million: 4.00
-    output:
-      - up_to_tokens: 200000
-        price_per_million: 12.00
-      - up_to_tokens: null
-        price_per_million: 18.00
-    caching:
-      - up_to_tokens: 200000
-        price_per_million: 0.20
-      - up_to_tokens: null
-        price_per_million: 0.40
 
 gemini-3.1-pro-preview:
   description: "Refines the performance and reliability of the Gemini 3 Pro series with better thinking, improved token efficiency, and more grounded, factually consistent responses. Optimized for software engineering and agentic workflows requiring precise tool usage and reliable multi-step execution."
@@ -598,13 +617,16 @@ gemini-3.1-pro-preview:
     code_execution: true
     file_search: true
     function_calling: true
-    grounding_google_maps: false
+    grounding_google_maps: true
     image_generation: false
     live_api: false
     search_grounding: true
     structured_outputs: true
     thinking: true
     url_context: true
+  thinking:
+    levels: [low, medium, high]
+    default: high
   pricing:
     input:
       - up_to_tokens: 200000
@@ -639,13 +661,16 @@ gemini-3.1-pro-preview-customtools:
     code_execution: true
     file_search: true
     function_calling: true
-    grounding_google_maps: false
+    grounding_google_maps: true
     image_generation: false
     live_api: false
     search_grounding: true
     structured_outputs: true
     thinking: true
     url_context: true
+  thinking:
+    levels: [low, medium, high]
+    default: high
   pricing:
     input:
       - up_to_tokens: 200000
@@ -684,12 +709,14 @@ gemini-3-pro-image:
     image_generation: true
     live_api: false
     search_grounding: true
-    structured_outputs: true
+    structured_outputs: false
     thinking: true
     url_context: false
+  # Thinking is always on and has no level control.
   image_generation:
     resolutions: ["1K", "2K", "4K"]
     aspect_ratios: ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]
+    max_reference_images: 14
   pricing:
     input:
       - up_to_tokens: null
@@ -702,6 +729,7 @@ gemini-3-pro-image:
         price_per_million: 120.00
 
 gemini-2.5-pro:
+  # Deprecated; from 2026-12-01 requests are routed to gemini-3.8-flash and billed at its rates.
   description: "Our state-of-the-art thinking model, capable of reasoning over complex problems in code, math, and STEM."
   knowledge_cutoff: "2025-01"
   latest_update: "2025-11"
@@ -725,6 +753,9 @@ gemini-2.5-pro:
     structured_outputs: true
     thinking: true
     url_context: true
+  thinking:
+    budget: {min: 128, max: 32768}
+    can_disable: false
   pricing:
     free_tier: true
     excluded_features: [search_grounding, grounding_google_maps]
@@ -739,10 +770,13 @@ gemini-2.5-pro:
       - up_to_tokens: null
         price_per_million: 15.00
     caching:
+      - up_to_tokens: 200000
+        price_per_million: 0.125
       - up_to_tokens: null
-        price_per_million: 0.31
+        price_per_million: 0.25
 
 gemini-2.5-flash:
+  # Deprecated; from 2026-12-01 requests are routed to gemini-3.5-flash-lite and billed at its rates.
   description: "Our best model in terms of price-performance, offering well-rounded capabilities."
   knowledge_cutoff: "2025-01"
   latest_update: "2025-11"
@@ -766,6 +800,9 @@ gemini-2.5-flash:
     structured_outputs: true
     thinking: true
     url_context: true
+  thinking:
+    budget: {min: 0, max: 24576}
+    can_disable: true
   pricing:
     free_tier: true
     input:
@@ -774,8 +811,12 @@ gemini-2.5-flash:
     output:
       - up_to_tokens: null
         price_per_million: 2.50
+    caching:
+      - up_to_tokens: null
+        price_per_million: 0.03
 
 gemini-2.5-flash-image:
+  # Deprecated; shuts down on 2027-03-15. Replacement: gemini-3.1-flash-lite-image.
   description: "Our state-of-the-art image generation and editing model."
   knowledge_cutoff: "2025-06"
   latest_update: "2025-10"
@@ -788,7 +829,7 @@ gemini-2.5-flash-image:
   capabilities:
     audio_generation: false
     batch_api: true
-    caching: true
+    caching: false
     code_execution: false
     file_search: false
     function_calling: false
@@ -796,7 +837,7 @@ gemini-2.5-flash-image:
     image_generation: true
     live_api: false
     search_grounding: false
-    structured_outputs: true
+    structured_outputs: false
     thinking: false
     url_context: false
   image_generation:
@@ -837,6 +878,9 @@ gemini-2.5-flash-lite:
     structured_outputs: true
     thinking: true
     url_context: true
+  thinking:
+    budget: {min: 512, max: 24576}
+    can_disable: true
   pricing:
     free_tier: true
     input:
@@ -845,69 +889,6 @@ gemini-2.5-flash-lite:
     output:
       - up_to_tokens: null
         price_per_million: 0.40
-
-gemini-2.0-flash:
-  description: "Our second generation workhorse model, with a 1 million token context window."
-  knowledge_cutoff: "2024-08"
-  latest_update: "2025-02"
-  supported_data_types:
-    inputs: [Text, Image, Video, Audio]
-    outputs: [Text]
-  tokens:
-    input: 1048576
-    output: 8192
-  capabilities:
-    audio_generation: false
-    batch_api: true
-    caching: true
-    code_execution: true
-    file_search: false
-    function_calling: true
-    grounding_google_maps: true
-    image_generation: false
-    live_api: true
-    search_grounding: true
-    structured_outputs: true
-    thinking: false # Experimental
-    url_context: false
-  pricing:
-    free_tier: true
-    input:
+    caching:
       - up_to_tokens: null
-        price_per_million: 0.10
-    output:
-      - up_to_tokens: null
-        price_per_million: 0.40
-
-gemini-2.0-flash-lite:
-  description: "Our second generation small workhorse model, with a 1 million token context window."
-  knowledge_cutoff: "2024-08"
-  latest_update: "2025-02"
-  supported_data_types:
-    inputs: [Text, Image, Video, Audio]
-    outputs: [Text]
-  tokens:
-    input: 1048576
-    output: 8192
-  capabilities:
-    audio_generation: false
-    batch_api: true
-    caching: true
-    code_execution: false
-    file_search: false
-    function_calling: true
-    grounding_google_maps: false
-    image_generation: false
-    live_api: false
-    search_grounding: false
-    structured_outputs: true
-    thinking: false
-    url_context: false
-  pricing:
-    free_tier: true
-    input:
-      - up_to_tokens: null
-        price_per_million: 0.075
-    output:
-      - up_to_tokens: null
-        price_per_million: 0.30
+        price_per_million: 0.01

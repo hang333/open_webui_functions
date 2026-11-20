@@ -545,8 +545,9 @@ async def test_paid_api_toggle_selects_correct_key(pipe_instance_fixture, toggle
     pipe, MockedGenAIClientConstructor = pipe_instance_fixture
     Pipe._get_or_create_genai_client.cache_clear()
 
-    # Provide both the model ID and the canonical ID required by the new pipe logic
-    model_id = 'gemini-pro'
+    # Provide both the model ID and the canonical ID required by the new pipe logic.
+    # A model with a free tier in the pipe's embedded model table.
+    model_id = 'gemini-3.8-flash'
     __metadata__ = {'model': {'id': model_id}, 'canonical_model_id': model_id}
 
     # Ensure both keys are present in the initial valves
@@ -556,9 +557,6 @@ async def test_paid_api_toggle_selects_correct_key(pipe_instance_fixture, toggle
     # Mock the request app state which is now required early in pipe()
     mock_request = MagicMock()
     mock_request.app.state._state = {
-        'gemini_model_config': {
-            model_id: {'pricing': {'free_tier': True}},
-        },
         'gemini_dummy_event_emitter': EventEmitter(None),
     }
 

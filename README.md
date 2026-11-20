@@ -17,11 +17,11 @@ This repository contains a collection of Open WebUI plugins I have personally co
 The plugins are organized by type within the `plugins/` directory:
 
 -   `plugins/pipes/`: Pipe plugins that integrate custom models and behaviors.
-    -   `gemini_manifold.py` | [Open WebUI Community](https://openwebui.com/f/suurt8ll/gemini_manifold_google_genai) | Provides support for Google's Gemini Studio API and Vertex AI. See the [Detailed Documentation](docs/plugins/pipes/gemini_manifold.md).
+    -   `gemini_manifold.py` | [Open WebUI Community](https://openwebui.com/f/suurt8ll/gemini_manifold_google_genai) | Provides support for Google's Gemini Studio API and Vertex AI. On this branch it is Gemini Manifold Plus (function id `gemini_manifold_plus`) with native tool calling and the current Gemini models. See the [Detailed Documentation](docs/plugins/pipes/gemini_manifold.md).
     -   `venice_manifold.py` | [Open WebUI Community](https://openwebui.com/f/suurt8ll/venice_image_generation) | Enables image creation using any diffusion model offered by Venice.ai API.
     -   `dynamic_plugin_log_manager.py`: Dynamically injects and manages Loguru handlers with custom formatting for Open WebUI plugins. See the [Detailed Documentation](docs/plugins/pipes/dynamic_plugin_log_manager.md).
 -   `plugins/filters/`: Filter plugins that modify request and response data.
-    -   `gemini_manifold_companion.py`: A companion filter for the Gemini Manifold pipe providing enhanced functionality like Google Search grounding. See the [Detailed Documentation](docs/plugins/filters/gemini_manifold_companion.md).
+    -   `gemini_manifold_companion.py`: A companion filter for the Gemini Manifold pipes (the original and the Plus edition) providing enhanced functionality like Google Search grounding. See the [Detailed Documentation](docs/plugins/filters/gemini_manifold_companion.md).
     -   `system_prompt_injector.py`: Allows changing chat options like system prompt and temperature directly from the chatbox. Pairs well with the Open WebUI "Prompts" feature.
 
 ## Installation/Updating
@@ -31,11 +31,11 @@ The plugins are organized by type within the `plugins/` directory:
 2. Copy the entire content of the desired `.py` file (ideally from a **Tag**, not Master) and paste it into the editor.
 3. **CRITICAL:** Ensure the `id` field in the Open WebUI interface matches the `id` defined in the file's frontmatter (docstring). Some logic within these plugins depends on these IDs being exact.
 
-   *Example from `gemini_manifold.py`:*
+   *Example from `gemini_manifold.py` (on this branch, the Plus edition):*
    ```python
    """
-   title: Gemini Manifold google_genai
-   id: gemini_manifold_google_genai
+   title: Gemini Manifold Plus
+   id: gemini_manifold_plus
    ...
    """
    ```

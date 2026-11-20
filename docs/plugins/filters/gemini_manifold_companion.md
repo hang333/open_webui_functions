@@ -41,7 +41,7 @@ The filter is configured via a "Valves" settings menu accessible by clicking the
 
 Once installed and configured, the filter automatically modifies requests for models registered by `gemini_manifold.py` and listed in `ALLOWED_GROUNDING_MODELS` or `ALLOWED_CODE_EXECUTION_MODELS` (defined in the filter's code) when the user enables **web search** or **code interpreter** in the Open WebUI chat interface, or when **documents are uploaded** to a persistent chat (and `BYPASS_BACKEND_RAG` is enabled).
 
-The filter checks for the `gemini_manifold_google_genai.` prefix in the model name (or its base model ID) to ensure it's interacting with a model managed by the `gemini_manifold.py` pipe.
+The filter checks the function id prefix of the model name (or its base model ID) to ensure it's interacting with a model managed by a Gemini Manifold pipe: `gemini_manifold_google_genai.` (the original pipe) or `gemini_manifold_plus.` (Gemini Manifold Plus). Since version 2.2.0 it also recognizes a pipe installed under another id when the loaded pipe exposes its model table as `gemini_model_config`, which Gemini Manifold Plus does: the filter then uses that embedded table for its capability checks instead of downloading `MODEL_CONFIG_PATH`. For the original pipe it still downloads `MODEL_CONFIG_PATH` and stores it in the app state, as before.
 
 ## Option resolution hierarchy
 
@@ -82,7 +82,7 @@ This filter is designed to work exclusively with the `gemini_manifold.py` pipe. 
 If features are not working as expected, check the following:
 
 *   Ensure the filter is enabled globally or for the specific model being used.
-*   Verify that the model name includes the `gemini_manifold_google_genai.` prefix and is present in the relevant `ALLOWED_GROUNDING_MODELS` or `ALLOWED_CODE_EXECUTION_MODELS` list within the filter's code.
+*   Verify that the model name includes the `gemini_manifold_google_genai.` or `gemini_manifold_plus.` prefix and that the model has the capability (`search_grounding`, `code_execution`) in the model table.
 *   **For Grounding:** Ensure web search is enabled in the Open WebUI chat interface.
 *   **For Code Execution:** Ensure the code interpreter feature is enabled in the Open WebUI chat interface.
 *   **For RAG Bypass:** Ensure the `BYPASS_BACKEND_RAG` valve is enabled for the filter. Verify you are using a persistent chat (not a temporary 'local' chat). Check if the documents are actually being included in the initial request payload sent by the UI.
