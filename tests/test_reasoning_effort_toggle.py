@@ -1,45 +1,45 @@
-"""Tests of the Reasoning Effort toggle filter (plugins/filters/reasoning_effort_toggle.py)."""
+"""Tests of the Thinking toggle filter (plugins/filters/reasoning_effort_toggle.py)."""
 
 from __future__ import annotations
 
 import pytest
 
-from plugins.filters.reasoning_effort_toggle import ICON, Filter
+from plugins.filters.reasoning_effort_toggle import DEFAULT_LEVEL, ICON, LEVELS, Filter
 
 
-def make(level: str) -> Filter:
-    flt = Filter()
-    flt.valves = Filter.Valves(LEVEL=level)
-    return flt
-
-
-def test_is_a_toggle_with_an_icon():
+def test_is_a_toggle_with_an_icon_and_user_valves():
     flt = Filter()
     assert flt.toggle is True
     assert flt.icon == ICON and ICON.startswith('data:image/svg+xml;base64,')
-    assert flt.valves.LEVEL == 'xhigh'
+    # User valves make Open WebUI open the level picker when the chat input badge is clicked.
+    assert hasattr(Filter, 'UserValves')
 
 
-def test_sets_the_level_and_overrides_the_chat_parameter():
-    body = {'model': 'm', 'messages': [], 'reasoning_effort': 'low'}
-    assert make('xhigh').inlet(body, {})['reasoning_effort'] == 'xhigh'
-    assert make('low').inlet({'messages': []}, {})['reasoning_effort'] == 'low'
+def test_the_level_picker_is_a_single_choice_enum():
+    schema = Filter.UserValves.model_json_schema()['properties']['LEVEL']
+    assert schema['enum'] == list(LEVELS)  # Rendered as a dropdown: one level at a time.
+    assert schema['default'] == DEFAULT_LEVEL
 
 
-@pytest.mark.parametrize('order', [('low', 'xhigh'), ('xhigh', 'low')])
-def test_the_highest_level_wins_when_several_toggles_are_on(order):
-    body: dict = {'messages': []}
-    metadata: dict = {}  # Open WebUI passes the same __metadata__ dict to every filter of a request.
-    for level in order:
-        body = make(level).inlet(body, metadata)
-    assert body['reasoning_effort'] == 'xhigh'
+@pytest.mark.parametrize(('label', 'effort'), list(LEVELS.items()))
+def test_sends_the_users_level_and_overrides_the_chat_parameter(label, effort):
+    body = {'messages': [], 'reasoning_effort': 'none'}
+    user = {'id': 'u', 'valves': Filter.UserValves(LEVEL=label)}
+    assert Filter().inlet(body, user)['reasoning_effort'] == effort
 
 
-def test_works_without_metadata():
-    assert make('medium').inlet({'messages': []})['reasoning_effort'] == 'medium'
-    assert make('high').inlet({'messages': []}, None)['reasoning_effort'] == 'high'
+def test_defaults_when_the_user_has_not_picked_a_level():
+    expected = LEVELS[DEFAULT_LEVEL]
+    assert Filter().inlet({'messages': []}, {'id': 'u', 'valves': Filter.UserValves()})['reasoning_effort'] == expected
+    assert Filter().inlet({'messages': []}, {'id': 'u'})['reasoning_effort'] == expected
+    assert Filter().inlet({'messages': []})['reasoning_effort'] == expected
 
 
-def test_rejects_unknown_levels():
+def test_accepts_user_valves_as_a_dict_and_ignores_unknown_levels():
+    assert Filter().inlet({'messages': []}, {'valves': {'LEVEL': '快速'}})['reasoning_effort'] == 'low'
+    assert Filter().inlet({'messages': []}, {'valves': {'LEVEL': 'max'}})['reasoning_effort'] == LEVELS[DEFAULT_LEVEL]
+
+
+def test_rejects_unknown_levels_in_the_picker():
     with pytest.raises(ValueError):
-        Filter.Valves(LEVEL='max')
+        Filter.UserValves(LEVEL='max')
