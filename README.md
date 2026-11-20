@@ -22,6 +22,7 @@ The plugins are organized by type within the `plugins/` directory:
     -   `dynamic_plugin_log_manager.py`: Dynamically injects and manages Loguru handlers with custom formatting for Open WebUI plugins. See the [Detailed Documentation](docs/plugins/pipes/dynamic_plugin_log_manager.md).
 -   `plugins/filters/`: Filter plugins that modify request and response data.
     -   `gemini_manifold_companion.py`: A companion filter for the Gemini Manifold pipes (the original and the Plus edition) providing enhanced functionality like Google Search grounding. See the [Detailed Documentation](docs/plugins/filters/gemini_manifold_companion.md).
+    -   `reasoning_effort_toggle.py`: A chat toggle that sets `reasoning_effort` (install once per level, e.g. xhigh and low). See the [Detailed Documentation](docs/plugins/filters/reasoning_effort_toggle.md).
     -   `system_prompt_injector.py`: Allows changing chat options like system prompt and temperature directly from the chatbox. Pairs well with the Open WebUI "Prompts" feature.
 
 ## Installation/Updating
