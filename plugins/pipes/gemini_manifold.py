@@ -6,7 +6,7 @@ author: suurt8ll
 author_url: https://github.com/suurt8ll
 funding_url: https://github.com/suurt8ll/open_webui_functions
 license: MIT
-version: 2.2.0+plus.3
+version: 2.2.0+plus.4
 requirements: google-genai==3.3.0
 """
 
@@ -65,7 +65,7 @@ from pydantic import (
 
 # I change these only when I make a release to avoid PR merge conflicts.
 # If you are making a PR then please do not change these values.
-VERSION = '2.2.0+plus.3'
+VERSION = '2.2.0+plus.4'
 # This is the recommended version for the companion filter.
 # Older versions might still work, but backward compatibility is not guaranteed
 # during the development of this personal use plugin.
@@ -3170,6 +3170,18 @@ class Pipe:
         choice = {'index': 0, 'message': message, 'finish_reason': 'tool_calls' if tool_calls else 'stop'}
         return {'choices': [choice], 'usage': usage or {}, **({'error': error} if error else {})}
 
+    @staticmethod
+    def _request_config(
+        config: types.GenerateContentConfig,
+        contents: list[types.Content],
+        options: ResolvedOptions,
+        client: genai.Client,
+    ) -> types.GenerateContentConfig:
+        """The config sent to the SDK: a proxy may read only camelCase fields (see `_camel_case_request`)."""
+        if options.GEMINI_API_BASE_URL and not client.vertexai:
+            return _camel_case_request(config, contents)
+        return config
+
     async def _execute_generation_attempt(
         self,
         tier: str,
@@ -3252,7 +3264,7 @@ class Pipe:
         gen_content_args = {
             'model': model_id,
             'contents': contents,
-            'config': gen_content_conf,
+            'config': self._request_config(gen_content_conf, contents, options, client),
         }
         log.debug(f'Passing args to {api_name} (Tier: {tier}):', payload=gen_content_args)
 
@@ -4909,6 +4921,33 @@ def _maps_attribution(grounding_metadata: types.GroundingMetadata | None) -> str
     if not links:
         return None
     return '\n\n---\n' + '\n'.join(f'- {_markdown_link(title, uri)} · Google\u00a0Maps' for uri, title in links.items())
+
+
+def _camel_case_request(
+    config: types.GenerateContentConfig, contents: list[types.Content]
+) -> types.GenerateContentConfig:
+    """
+    The SDK writes some objects into the request body as they are, so their fields go out in snake_case
+    (`parameters_json_schema`, `thinking_level`, `file_uri`). Google reads both spellings, but a proxy that
+    parses the REST schema may read camelCase only and drop the rest; AxonHub's native Gemini endpoint does:
+    tools arrive without parameters, the thinking config is lost and file parts lose their URI.
+
+    The contents, the tools and the thinking config are therefore sent camelCase in `http_options.extra_body`.
+    Lists there replace the SDK's lists as they are. The thinking config is taken out of the config itself:
+    the SDK renames the keys of a dict merged into one it already wrote back to its own spelling.
+    """
+
+    def camel(model: BaseModel) -> dict[str, Any]:
+        return model.model_dump(mode='json', by_alias=True, exclude_none=True)
+
+    extra_body: dict[str, Any] = {'contents': [camel(content) for content in contents]}
+    if config.tools:
+        extra_body['tools'] = [camel(tool) for tool in config.tools]
+    if config.thinking_config:
+        extra_body['generationConfig'] = {'thinkingConfig': camel(config.thinking_config)}
+    http_options = config.http_options.model_copy() if config.http_options else types.HttpOptions()
+    http_options.extra_body = {**(http_options.extra_body or {}), **extra_body}
+    return config.model_copy(update={'thinking_config': None, 'http_options': http_options})
 
 
 def _search_suggestions_embed(rendered_content: str) -> str:

@@ -9,6 +9,7 @@ and responses are built and validated by the pinned SDK.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import re
 import time
@@ -576,6 +577,167 @@ async def test_tool_round_returns_tool_calls_and_exact_signatures(pipe, stream):
     declared = [d.name for tool in request['config'].tools for d in tool.function_declarations or []]
     assert declared == ['get_weather', 'get_time']
     assert request['config'].tool_config is None
+
+
+# region camelCase requests for proxies
+
+
+class Captured(Exception):
+    """Stops the SDK right before it sends a request."""
+
+
+def camelize(value: Any, free_form: bool = False) -> Any:
+    """The SDK's snake_case keys in camelCase; JSON Schemas, call arguments and tool results stay as they are."""
+    if isinstance(value, list):
+        return [camelize(item, free_form) for item in value]
+    if not isinstance(value, dict) or free_form:
+        return value
+    renamed = {}
+    for key, item in value.items():
+        key = re.sub(r'_([a-z0-9])', lambda match: match.group(1).upper(), key)
+        renamed[key] = camelize(item, free_form=key in {'parametersJsonSchema', 'args', 'response'})
+    return renamed
+
+
+def proxy_request() -> tuple[list[types.Content], types.GenerateContentConfig]:
+    """A request with the objects the SDK passes through as they are: files, signed calls, results, schemas."""
+    contents = [
+        types.Content(
+            role='user',
+            parts=[
+                types.Part(text='Find my notes on this video.'),
+                types.Part(inline_data=types.Blob(mime_type='image/png', data=b'\x89PNG')),
+                types.Part(
+                    file_data=types.FileData(file_uri='https://www.youtube.com/watch?v=abc', mime_type='video/*')
+                ),
+            ],
+        ),
+        types.Content(
+            role='model',
+            parts=[
+                types.Part(
+                    function_call=types.FunctionCall(
+                        id='fc-1', name='search_chats', args={'query': 'notes', 'start_timestamp': 1}
+                    ),
+                    thought_signature=SIGNATURE,
+                )
+            ],
+        ),
+        types.Content(
+            role='user',
+            parts=[
+                types.Part(
+                    function_response=types.FunctionResponse(
+                        id='fc-1', name='search_chats', response={'output': [], 'next_page': 2}
+                    )
+                )
+            ],
+        ),
+    ]
+    schema = {
+        'type': 'object',
+        'properties': {'query': {'type': 'string'}, 'start_timestamp': {'type': 'integer'}},
+        'required': ['query'],
+    }
+    config = types.GenerateContentConfig(
+        system_instruction='Be brief.',
+        tools=[
+            types.Tool(google_search=types.GoogleSearch()),
+            types.Tool(
+                function_declarations=[
+                    types.FunctionDeclaration(
+                        name='search_chats', description='Search chats.', parameters_json_schema=schema
+                    )
+                ]
+            ),
+        ],
+        tool_config=types.ToolConfig(
+            function_calling_config=types.FunctionCallingConfig(mode=types.FunctionCallingConfigMode.AUTO)
+        ),
+        thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.HIGH, include_thoughts=True),
+    )
+    return contents, config
+
+
+async def sent_by_sdk(config: types.GenerateContentConfig, contents: list[types.Content]) -> tuple[str, dict]:
+    """The URL and JSON body the pinned SDK sends to a proxy for this request."""
+    client = gm.genai.Client(
+        api_key='key', http_options=types.HttpOptions(base_url='https://proxy.example', api_version='v1beta')
+    )
+    sent = []
+
+    async def capture(http_request, http_options=None, stream=False):
+        sent.append(http_request)
+        raise Captured
+
+    client._api_client._async_request = capture
+    with pytest.raises(Captured):
+        await client.aio.models.generate_content(model='gemini-4-hydrogen', contents=contents, config=config)
+    return sent[0].url, sent[0].data
+
+
+@pytest.mark.asyncio
+async def test_camel_case_request_is_the_sdk_request_with_camel_case_fields():
+    contents, config = proxy_request()
+    url, snake = await sent_by_sdk(config, contents)
+    camel_url, camel = await sent_by_sdk(gm._camel_case_request(config, contents), contents)
+
+    assert camel_url == url == 'https://proxy.example/v1beta/models/gemini-4-hydrogen:generateContent'
+    # The SDK itself sends these fields in snake_case, which AxonHub's Gemini endpoint drops.
+    sdk_text = json.dumps(snake)
+    assert all(field in sdk_text for field in ('parameters_json_schema', 'thinking_level', 'file_uri'))
+    # The rewritten request is the same request with camelCase field names.
+    assert camel == camelize(snake)
+    assert camel['generationConfig']['thinkingConfig'] == {'thinkingLevel': 'HIGH', 'includeThoughts': True}
+    declaration = camel['tools'][1]['functionDeclarations'][0]
+    assert declaration['parametersJsonSchema']['properties']['start_timestamp'] == {'type': 'integer'}
+    user_parts, model_parts = camel['contents'][0]['parts'], camel['contents'][1]['parts']
+    assert user_parts[2]['fileData'] == {'fileUri': 'https://www.youtube.com/watch?v=abc', 'mimeType': 'video/*'}
+    assert model_parts[0]['functionCall']['args'] == {'query': 'notes', 'start_timestamp': 1}
+    assert base64.urlsafe_b64decode(model_parts[0]['thoughtSignature']) == SIGNATURE
+    assert camel['toolConfig'] == snake['toolConfig'] and camel['systemInstruction'] == snake['systemInstruction']
+
+
+@pytest.mark.asyncio
+async def test_requests_through_a_proxy_are_sent_in_camel_case(pipe):
+    pipe.valves = Pipe.Valves(GEMINI_PAID_API_KEY='paid-key', GEMINI_API_BASE_URL='https://proxy.example')
+    pipe.fake_client = FakeClient(rounds=[tool_round_chunks()])
+    body = {
+        'model': 'gemini_manifold_plus.gemini-4-hydrogen',
+        'messages': [{'role': 'user', 'content': 'Weather and time in Paris?'}],
+        'stream': False,
+        'tools': TOOLS,
+        'reasoning_effort': 'high',
+    }
+    await pipe.pipe(body, USER, make_request(), metadata())
+
+    request = pipe.fake_client.aio.models.calls[0]
+    config = request['config']
+    extra_body = config.http_options.extra_body
+    assert config.thinking_config is None  # Sent only in extra_body, in camelCase.
+    assert extra_body['generationConfig']['thinkingConfig'] == {'thinkingLevel': 'HIGH', 'includeThoughts': True}
+    declarations = [d for tool in extra_body['tools'] for d in tool.get('functionDeclarations', [])]
+    assert [d['name'] for d in declarations] == ['get_weather', 'get_time']
+    assert declarations[0]['parametersJsonSchema']['required'] == ['city']
+    dumped = [content.model_dump(mode='json', by_alias=True, exclude_none=True) for content in request['contents']]
+    assert extra_body['contents'] == dumped
+
+
+@pytest.mark.asyncio
+async def test_requests_to_google_are_left_to_the_sdk(pipe):
+    pipe.fake_client = FakeClient(rounds=[tool_round_chunks()])
+    body = {
+        'model': 'gemini_manifold_plus.gemini-4-hydrogen',
+        'messages': [{'role': 'user', 'content': 'Weather and time in Paris?'}],
+        'stream': False,
+        'tools': TOOLS,
+        'reasoning_effort': 'high',
+    }
+    await pipe.pipe(body, USER, make_request(), metadata())
+
+    config = pipe.fake_client.aio.models.calls[0]['config']
+    assert config.http_options is None
+    assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
 
 
 def continued_round_messages(detail: dict) -> list[dict]:
