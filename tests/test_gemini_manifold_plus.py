@@ -323,6 +323,37 @@ def test_resolve_thinking_config_prefers_budget_rules_for_gemini_25():
 # endregion Thinking per model family
 
 
+# region Admin-only base URL
+
+
+def test_base_url_is_an_admin_only_valve():
+    assert 'GEMINI_API_BASE_URL' in Pipe.Valves.model_fields
+    assert 'GEMINI_API_BASE_URL' not in Pipe.UserValves.model_fields
+    assert 'GEMINI_API_BASE_URL' in gm.ADMIN_ONLY_VALVE_FIELDS
+    assert 'GEMINI_API_BASE_URL' not in gm.USER_OVERRIDABLE_VALVE_FIELDS
+
+
+def test_user_level_base_url_never_replaces_the_admins():
+    """
+    A base URL from user valves (e.g. one saved before it became admin-only) or from request parameters is
+    ignored, so requests that carry the admin's API key cannot be sent to a server the user chose.
+    """
+    admin_url = 'https://gemini-proxy.example.com'
+    pipe = Pipe()
+    pipe.valves = Pipe.Valves(GEMINI_FREE_API_KEY='admin-key', GEMINI_API_BASE_URL=admin_url)
+    saved_user_valves = Pipe.UserValves.model_validate({'GEMINI_API_BASE_URL': 'https://attacker.example'})
+    body = {'gemini_api_base_url': 'https://attacker.example'}
+
+    options = gm._resolve_options(pipe.valves, saved_user_valves, USER['email'], body, metadata())
+
+    assert options.GEMINI_API_BASE_URL == admin_url
+    free_key, _, base_url, *_ = Pipe._prepare_client_args(options)
+    assert (free_key, base_url) == ('admin-key', admin_url)
+
+
+# endregion Admin-only base URL
+
+
 # region Request shape: sampling parameters, structured output, media resolution, prefill
 
 

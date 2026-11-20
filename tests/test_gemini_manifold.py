@@ -286,7 +286,7 @@ def test_user_must_auth_no_user_key_provided_errors(pipe_instance_fixture):
 def test_user_must_auth_user_provides_gemini_key_uses_user_creds(pipe_instance_fixture):
     """
     USER_MUST_PROVIDE_AUTH_CONFIG=True. User provides their own Gemini key.
-    Expected: Gemini client with user's credentials, ignoring admin's.
+    Expected: Gemini client with user's key, ignoring admin's. The base URL stays the admin's (admin-only).
     """
     pipe, MockedGenAIClientConstructor = pipe_instance_fixture
     Pipe._get_or_create_genai_client.cache_clear()
@@ -299,7 +299,7 @@ def test_user_must_auth_user_provides_gemini_key_uses_user_creds(pipe_instance_f
     user_valves_instance = Pipe.UserValves(
         GEMINI_FREE_API_KEY=USER_FREE_KEY,
         GEMINI_PAID_API_KEY=None,
-        GEMINI_API_BASE_URL=USER_GEMINI_BASE_URL,
+        GEMINI_API_BASE_URL=USER_GEMINI_BASE_URL,  # Ignored: not a user valve.
     )
     merged_valves = _resolve_options(pipe.valves, user_valves_instance, USER_EMAIL_UNPRIVILEGED, body={}, metadata={})
 
@@ -307,7 +307,7 @@ def test_user_must_auth_user_provides_gemini_key_uses_user_creds(pipe_instance_f
 
     MockedGenAIClientConstructor.assert_called_once_with(
         api_key=USER_FREE_KEY,
-        http_options=gemini_types.HttpOptions(base_url=USER_GEMINI_BASE_URL, api_version='v1beta'),
+        http_options=gemini_types.HttpOptions(base_url=ADMIN_GEMINI_BASE_URL, api_version='v1beta'),
     )
     Pipe._get_or_create_genai_client.cache_clear()
 
@@ -349,7 +349,7 @@ def test_user_must_auth_user_tries_vertex_with_user_gemini_key_falls_back(
 ):
     """
     USER_MUST_PROVIDE_AUTH_CONFIG=True. User tries Vertex but provides a Gemini key.
-    Expected: Falls back to Gemini Developer API using the user's provided key.
+    Expected: Falls back to Gemini Developer API using the user's provided key and the admin's base URL.
     """
     pipe, MockedGenAIClientConstructor = pipe_instance_fixture
     Pipe._get_or_create_genai_client.cache_clear()
@@ -361,7 +361,7 @@ def test_user_must_auth_user_tries_vertex_with_user_gemini_key_falls_back(
         USE_VERTEX_AI=True,
         GEMINI_FREE_API_KEY=USER_FREE_KEY,
         GEMINI_PAID_API_KEY=USER_PAID_KEY,
-        GEMINI_API_BASE_URL=USER_GEMINI_BASE_URL,
+        GEMINI_API_BASE_URL=USER_GEMINI_BASE_URL,  # Ignored: not a user valve.
     )
     merged_valves = _resolve_options(pipe.valves, user_valves_instance, USER_EMAIL_UNPRIVILEGED, body={}, metadata={})
 
@@ -374,7 +374,7 @@ def test_user_must_auth_user_tries_vertex_with_user_gemini_key_falls_back(
 
     MockedGenAIClientConstructor.assert_called_once_with(
         api_key=USER_FREE_KEY,  # Should prefer user's free key for fallback
-        http_options=gemini_types.HttpOptions(base_url=USER_GEMINI_BASE_URL, api_version='v1beta'),
+        http_options=gemini_types.HttpOptions(base_url=ADMIN_GEMINI_BASE_URL, api_version='v1beta'),
     )
     Pipe._get_or_create_genai_client.cache_clear()
 
@@ -476,7 +476,7 @@ def test_user_opts_out_of_admin_vertex_to_user_gemini(pipe_instance_fixture):
     user_valves_instance = Pipe.UserValves(
         USE_VERTEX_AI=False,
         GEMINI_FREE_API_KEY=USER_FREE_KEY,
-        GEMINI_API_BASE_URL=USER_GEMINI_BASE_URL,
+        GEMINI_API_BASE_URL=USER_GEMINI_BASE_URL,  # Ignored: not a user valve.
     )
     merged_valves = _resolve_options(pipe.valves, user_valves_instance, USER_EMAIL_REGULAR, body={}, metadata={})
 
@@ -484,7 +484,7 @@ def test_user_opts_out_of_admin_vertex_to_user_gemini(pipe_instance_fixture):
 
     MockedGenAIClientConstructor.assert_called_once_with(
         api_key=USER_FREE_KEY,
-        http_options=gemini_types.HttpOptions(base_url=USER_GEMINI_BASE_URL, api_version='v1beta'),
+        http_options=gemini_types.HttpOptions(base_url=ADMIN_GEMINI_BASE_URL, api_version='v1beta'),
     )
     Pipe._get_or_create_genai_client.cache_clear()
 

@@ -6,7 +6,7 @@ author: suurt8ll
 author_url: https://github.com/suurt8ll
 funding_url: https://github.com/suurt8ll/open_webui_functions
 license: MIT
-version: 2.2.0+plus.1
+version: 2.2.0+plus.2
 requirements: google-genai==3.3.0
 """
 
@@ -65,7 +65,7 @@ from pydantic import (
 
 # I change these only when I make a release to avoid PR merge conflicts.
 # If you are making a PR then please do not change these values.
-VERSION = '2.2.0+plus.1'
+VERSION = '2.2.0+plus.2'
 # This is the recommended version for the companion filter.
 # Older versions might still work, but backward compatibility is not guaranteed
 # during the development of this personal use plugin.
@@ -1849,7 +1849,13 @@ _VALVE_DESCRIPTIONS: Final[dict[str, str]] = {
         'Comma-separated list of user email addresses allowed to bypass `USER_MUST_PROVIDE_AUTH_CONFIG`'
         ' and use default system credentials.'
     ),
-    'GEMINI_API_BASE_URL': 'Custom base URL for calling the Gemini API.',
+    'GEMINI_API_BASE_URL': (
+        'Custom base URL of the Gemini Developer API, e.g. a reverse proxy of '
+        '`https://generativelanguage.googleapis.com` (native Gemini API, not OpenAI-compatible; '
+        'without `/v1beta`). Chat, model list, Files API and Interactions requests all go there. '
+        'Ignored with Vertex AI.\n\n'
+        '*Admin-only: users cannot override it, because the requests carry the API key.*'
+    ),
     # Vertex AI
     'USE_VERTEX_AI': (
         'Whether to use Google Cloud Vertex AI instead of the standard Gemini API.\n\n'
@@ -1985,7 +1991,6 @@ class _SharedValves(BaseModel):
 
     GEMINI_FREE_API_KEY: str | None = _admin_field('GEMINI_FREE_API_KEY')
     GEMINI_PAID_API_KEY: str | None = _admin_field('GEMINI_PAID_API_KEY')
-    GEMINI_API_BASE_URL: str | None = _admin_field('GEMINI_API_BASE_URL')
     USE_VERTEX_AI: bool = _admin_field('USE_VERTEX_AI', False)
     VERTEX_PROJECT: str | None = _admin_field('VERTEX_PROJECT')
     VERTEX_LOCATION: str = _admin_field('VERTEX_LOCATION', 'global')
@@ -2174,6 +2179,8 @@ def _generate_user_valves(shared_cls: type[BaseModel]) -> type[BaseModel]:
 
 class Pipe:
     class Valves(_SharedValves):
+        # Admin-only: requests to this URL carry the admin's API key unless the user brings their own.
+        GEMINI_API_BASE_URL: str | None = _admin_field('GEMINI_API_BASE_URL')
         USER_MUST_PROVIDE_AUTH_CONFIG: bool = _admin_field('USER_MUST_PROVIDE_AUTH_CONFIG', False)
         AUTH_WHITELIST: str | None = _admin_field('AUTH_WHITELIST')
         MODEL_WHITELIST: str = _admin_field('MODEL_WHITELIST', '*')
