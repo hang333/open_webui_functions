@@ -6,7 +6,7 @@ author: suurt8ll
 author_url: https://github.com/suurt8ll
 funding_url: https://github.com/suurt8ll/open_webui_functions
 license: MIT
-version: 2.2.0+plus.4
+version: 2.2.0+plus.5
 requirements: google-genai==3.3.0
 """
 
@@ -65,7 +65,7 @@ from pydantic import (
 
 # I change these only when I make a release to avoid PR merge conflicts.
 # If you are making a PR then please do not change these values.
-VERSION = '2.2.0+plus.4'
+VERSION = '2.2.0+plus.5'
 # This is the recommended version for the companion filter.
 # Older versions might still work, but backward compatibility is not guaranteed
 # during the development of this personal use plugin.
@@ -278,6 +278,9 @@ OMNI_VIDEO_MODEL: Final[str] = 'gemini-omni-1.2-flash'
 # - REPLAY_FORMAT: the exact model content of one round, thought signatures included.
 # - INTERACTION_FORMAT: the id of the interaction that produced the message (Interactions API models).
 REPLAY_FORMAT: Final[str] = 'gemini-manifold-content-v1'
+# Vertex AI rejects file data without a MIME type, and a proxy may send Gemini Developer API requests on to Vertex AI
+# (AxonHub's Vertex channels do). The Developer API takes the type as a hint.
+YOUTUBE_MIME_TYPE: Final[str] = 'video/mp4'
 INTERACTION_FORMAT: Final[str] = 'gemini-manifold-interaction-v1'
 # Documented placeholder for a function call whose thought signature is missing, e.g. a call that Open WebUI
 # itself added to the history. Only function calls of the current turn are validated.
@@ -1647,7 +1650,7 @@ class GeminiContentBuilder:
 
         # --- Branching logic for Vertex AI vs. Gemini Developer API ---
         if self.vertexai:
-            return types.Part.from_uri(file_uri=canonical_uri, mime_type='video/mp4')
+            return types.Part.from_uri(file_uri=canonical_uri, mime_type=YOUTUBE_MIME_TYPE)
         else:
             parsed_uri = urlparse(uri)
             query_params = parse_qs(parsed_uri.query)
@@ -1704,7 +1707,7 @@ class GeminiContentBuilder:
                 )
 
             return types.Part(
-                file_data=types.FileData(file_uri=canonical_uri),
+                file_data=types.FileData(file_uri=canonical_uri, mime_type=YOUTUBE_MIME_TYPE),
                 video_metadata=video_metadata,
             )
 

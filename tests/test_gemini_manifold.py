@@ -757,6 +757,8 @@ async def test_builder_build_contents_youtube_link_mixed_with_text(
         assert hasattr(youtube_part, 'file_data')
         assert youtube_part.file_data is not None
         assert youtube_part.file_data.file_uri == youtube_url
+        # Vertex AI (also behind a proxy such as AxonHub) rejects file data without a MIME type.
+        assert youtube_part.file_data.mime_type == 'video/mp4'
         # A real file part should have a falsy .text attribute
         assert not youtube_part.text
 
