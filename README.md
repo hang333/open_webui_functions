@@ -25,6 +25,8 @@ The plugins are organized by type within the `plugins/` directory:
     -   `gemini_search_toggle.py`: A chat toggle for Gemini's native Google Search grounding, without enabling Open WebUI's own web search. See the [Detailed Documentation](docs/plugins/filters/gemini_search_toggle.md).
     -   `reasoning_effort_toggle.py`: A thinking toggle that sets `reasoning_effort`, one level at a time; its chat input badge opens the level picker. See the [Detailed Documentation](docs/plugins/filters/reasoning_effort_toggle.md).
     -   `system_prompt_injector.py`: Allows changing chat options like system prompt and temperature directly from the chatbox. Pairs well with the Open WebUI "Prompts" feature.
+-   `plugins/tools/`: Tools (Workspace → Tools) that models call themselves.
+    -   `youtube_watch.py`: Lets the model watch a YouTube video with Gemini when the answer depends on the video's content; a link in a message stays plain text until then. See the [Detailed Documentation](docs/plugins/tools/youtube_watch.md).
 
 ## Installation/Updating
 
