@@ -6,7 +6,7 @@ author: suurt8ll
 author_url: https://github.com/suurt8ll
 funding_url: https://github.com/suurt8ll/open_webui_functions
 license: MIT
-version: 2.2.0+plus.5
+version: 2.2.0+plus.6
 requirements: google-genai==3.3.0
 """
 
@@ -65,7 +65,7 @@ from pydantic import (
 
 # I change these only when I make a release to avoid PR merge conflicts.
 # If you are making a PR then please do not change these values.
-VERSION = '2.2.0+plus.5'
+VERSION = '2.2.0+plus.6'
 # This is the recommended version for the companion filter.
 # Older versions might still work, but backward compatibility is not guaranteed
 # during the development of this personal use plugin.
@@ -3508,11 +3508,16 @@ class Pipe:
                         yield structured_chunk
 
         except Exception as e:
-            error_occurred = True
-            error_msg = f'Response processing ended with error: {e}'
-            log.exception(error_msg)
-            # As a chunk, so the error reaches the chat with or without the companion's event emitter.
-            yield {'error': {'detail': error_msg}}
+            if _is_proxy_sse_event_error(e) and (content_shown or function_call_parts):
+                # The answer or its calls arrived; only the stream's last chunk is missing (see the helper).
+                log.warning(f'A proxy ended the stream with an SSE event line ({e}); the round is kept.')
+            else:
+                error_occurred = True
+                detail = PROXY_SSE_EVENT_ERROR if _is_proxy_sse_event_error(e) else str(e)
+                error_msg = f'Response processing ended with error: {detail}'
+                log.exception(error_msg)
+                # As a chunk, so the error reaches the chat with or without the companion's event emitter.
+                yield {'error': {'detail': error_msg}}
 
         if total_substitutions > 0 and not error_occurred:
             plural_s = 's' if total_substitutions > 1 else ''
@@ -4924,6 +4929,24 @@ def _maps_attribution(grounding_metadata: types.GroundingMetadata | None) -> str
     if not links:
         return None
     return '\n\n---\n' + '\n'.join(f'- {_markdown_link(title, uri)} · Google\u00a0Maps' for uri, title in links.items())
+
+
+PROXY_SSE_EVENT_ERROR: Final[str] = (
+    'the proxy in front of the Gemini API reported an error with an SSE event line, which the Gemini SDK cannot'
+    " read; the proxy's logs have the reason."
+)
+
+
+def _is_proxy_sse_event_error(error: BaseException) -> bool:
+    """
+    Whether the response stream failed on an SSE `event:` line. Google's API never sends one; a proxy does when it
+    reports an error, and the SDK then fails with "Failed to parse response as JSON. Raw response: event:...".
+
+    AxonHub does this at the end of a stream whose last chunk only carries the finish reason: its conversion drops
+    that chunk, then it finds no finish reason in what it sent and reports the stream as incomplete. Everything
+    the model said has arrived by then.
+    """
+    return isinstance(error, genai_errors.UnknownApiResponseError) and 'Raw response: event:' in str(error)
 
 
 def _camel_case_request(

@@ -740,6 +740,68 @@ async def test_requests_to_google_are_left_to_the_sdk(pipe):
     assert config.thinking_config.thinking_level == types.ThinkingLevel.HIGH
 
 
+# region Proxy SSE event lines
+
+PROXY_EVENT_ERROR = 'Failed to parse response as JSON. Raw response: event:error'
+
+
+def stream_then_fail(pipe: Pipe, chunks: list[types.GenerateContentResponse]) -> None:
+    """The stream yields the chunks, then the SDK fails on a proxy's `event:error` line (as with AxonHub)."""
+
+    async def generate_content_stream(**kwargs: Any):
+        async def stream():
+            for chunk in chunks:
+                yield chunk
+            raise gm.genai_errors.UnknownApiResponseError(PROXY_EVENT_ERROR)
+
+        return stream()
+
+    pipe.fake_client.aio.models.generate_content_stream = generate_content_stream
+
+
+def streaming_body(**extra: Any) -> dict[str, Any]:
+    return {
+        'model': 'gemini_manifold_plus.gemini-4-hydrogen',
+        'messages': [{'role': 'user', 'content': 'Weather in Paris?'}],
+        'stream': True,
+        **extra,
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_proxy_event_line_after_the_calls_keeps_the_tool_round(pipe):
+    call = types.FunctionCall(id='fc-1', name='get_weather', args={'city': 'Paris'})
+    stream_then_fail(pipe, [response(types.Part(function_call=call, thought_signature=SIGNATURE))])
+
+    chunks = await collect(await pipe.pipe(streaming_body(tools=TOOLS), USER, make_request(), metadata()))
+
+    assert not any('error' in chunk for chunk in chunks)
+    items = deltas(chunks)
+    tool_calls = next(d['delta']['tool_calls'] for d in items if d['delta'].get('tool_calls'))
+    assert [(c['id'], c['function']['name']) for c in tool_calls] == [('fc-1', 'get_weather')]
+    assert any(d.get('finish_reason') == 'tool_calls' for d in items)
+
+
+@pytest.mark.asyncio
+async def test_a_proxy_event_line_after_the_answer_keeps_the_answer(pipe):
+    stream_then_fail(pipe, [response(types.Part(text='18°C and sunny.'))])
+
+    chunks = await collect(await pipe.pipe(streaming_body(), USER, make_request(), metadata()))
+
+    assert not any('error' in chunk for chunk in chunks)
+    assert ''.join(d['delta'].get('content') or '' for d in deltas(chunks)) == '18°C and sunny.'
+
+
+@pytest.mark.asyncio
+async def test_a_proxy_event_line_before_any_answer_is_reported_as_a_proxy_error(pipe):
+    stream_then_fail(pipe, [response(types.Part(text='Planning...', thought=True))])
+
+    chunks = await collect(await pipe.pipe(streaming_body(), USER, make_request(), metadata()))
+
+    errors = [chunk['error']['detail'] for chunk in chunks if 'error' in chunk]
+    assert errors == [f'Response processing ended with error: {gm.PROXY_SSE_EVENT_ERROR}']
+
+
 def continued_round_messages(detail: dict) -> list[dict]:
     """The messages Open WebUI sends back for the next round of its tool loop."""
     return [

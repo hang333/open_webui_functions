@@ -6,7 +6,7 @@ This document provides a comprehensive overview of the `gemini_manifold.py` Open
 
 This is a manifold pipe function that adds support for Google's Gemini Studio API and Vertex AI into Open WebUI using `google-genai` SDK.
 
-This branch turns the pipe into **Gemini Manifold Plus** (function id `gemini_manifold_plus`, version `2.2.0+plus.5`), based on Gemini Manifold google_genai 2.1.0. It has its own function id, so it can be installed next to the original pipe. A detailed description of the changes, the installation for Open WebUI 0.13.4 and the known limitations (in Simplified Chinese) is in [gemini_manifold_plus/说明.md](gemini_manifold_plus/说明.md).
+This branch turns the pipe into **Gemini Manifold Plus** (function id `gemini_manifold_plus`, version `2.2.0+plus.6`), based on Gemini Manifold google_genai 2.1.0. It has its own function id, so it can be installed next to the original pipe. A detailed description of the changes, the installation for Open WebUI 0.13.4 and the known limitations (in Simplified Chinese) is in [gemini_manifold_plus/说明.md](gemini_manifold_plus/说明.md).
 
 ## Features
 
